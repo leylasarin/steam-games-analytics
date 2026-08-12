@@ -85,41 +85,47 @@ try:
         else:
             st.warning("Aradığınız kriterlere uygun oyun bulunamadı.")
 
-    # 6. YENİ ÖZELLİK: Makine Öğrenmesi ile Başarı Tahmini
+   # 6. YENİ ÖZELLİK: Makine Öğrenmesi ile Başarı Tahmini
     st.markdown("---")
     st.subheader("🤖 Yapay Zeka ile Oyun Başarısı / Oyuncu Etkileşimi Tahmini")
     st.write("Yayınlamayı planladığınız oyunun parametrelerini girerek tahmini inceleme/oyuncu etkileşim sayısını öngörün.")
 
-    # Model Eğitimi (Arka Plan)
-    # Bağımsız değişkenler (Features) ve Bağımlı değişken (Target)
-    X = df[['price_usd', 'discount_pct', 'is_free']].copy()
-    
-    # Hedef sütun olarak 'reviews_count' veya 'review_count' varsa onu kullanıyoruz, yoksa simüle ediyoruz
-    target_col = 'reviews_count' if 'reviews_count' in df.columns else ('review_count' if 'review_count' in df.columns else None)
-    
+    # Verisetinde inceleme sayısı kolonu arama
+    possible_cols = ['reviews_count', 'review_count', 'reviews', 'total_reviews', 'user_reviews']
+    target_col = None
+    for col in possible_cols:
+        if col in df.columns:
+            target_col = col
+            break
+
+    # Eğer tam isimle bulunamazsa içinde 'review' geçen ilk nümerik kolonu seç
+    if not target_col:
+        for col in df.columns:
+            if 'review' in col.lower() and pd.api.types.is_numeric_dtype(df[col]):
+                target_col = col
+                break
+
+    # Kullanıcı Girdileri
+    p_col1, p_col2, p_col3 = st.columns(3)
+    input_price = p_col1.number_input("Planlanan Fiyat ($):", min_value=0.0, max_value=200.0, value=19.99)
+    input_discount = p_col2.slider("Planlanan İndirim Oranı (%):", 0, 90, 0)
+    input_is_free = p_col3.selectbox("Oyun Ücretsiz mi olmalı?", [False, True])
+
     if target_col:
+        X = df[['price_usd', 'discount_pct', 'is_free']].copy()
         y = df[target_col]
         
         model = RandomForestRegressor(n_estimators=100, random_state=42)
         model.fit(X, y)
 
-        # Kullanıcı Girdileri
-        p_col1, p_col2, p_col3 = st.columns(3)
-        input_price = p_col1.number_input("Planlanan Fiyat ($):", min_value=0.0, max_value=200.0, value=19.99)
-        input_discount = p_col2.slider("Planlanan İndirim Oranı (%):", 0, 90, 0)
-        input_is_free = p_col3.selectbox("Oyun Ücretsiz mi olmalı?", [False, True])
-
         if st.button("🔮 Oyuncu Etkileşimini Tahmin Et"):
-            # Model ile tahmin yapma
             input_data = pd.DataFrame({
                 'price_usd': [input_price],
                 'discount_pct': [input_discount],
                 'is_free': [input_is_free]
             })
             prediction = model.predict(input_data)[0]
-            
             st.success(f"🎉 Tahmini Oyuncu İnceleme/Etkileşim Sayısı: **{int(prediction):,}**")
             st.info("💡 Not: Bu tahmin, Random Forest algoritması kullanılarak geçmiş Steam verileri üzerindeki eğilimlere göre hesaplanmıştır.")
-
-except Exception as e:
-    st.error(f"Hata oluştu: {e}")
+    else:
+        st.warning("⚠️ Verisetinde inceleme/oyuncu sayısını temsil eden bir sütun otomatik tespit edilemedi.")
