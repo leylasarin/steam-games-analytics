@@ -1,11 +1,12 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+from sklearn.ensemble import RandomForestRegressor
 
 st.set_page_config(page_title="Steam Oyun Analiz Panosu", page_icon="🎮", layout="wide")
 
 st.title("🎮 Steam Oyun Veri Analiz Panosu")
-st.write("Bu panel üzerinden Steam oyunlarının fiyat ve indirim analizlerini inceleyebilirsiniz.")
+st.write("Bu panel üzerinden Steam oyunlarının fiyat, indirim ve başarı tahmin analizlerini inceleyebilirsiniz.")
 
 @st.cache_data
 def load_data():
@@ -28,16 +29,11 @@ try:
     # 2. Sol Menü Filtreleri
     st.sidebar.header("🔍 Filtreler")
     
-    # Fiyat Filtresi
     max_price = float(df['price_usd'].max())
     selected_price = st.sidebar.slider("Maksimum Fiyat ($)", 0.0, max_price, max_price)
-    
-    # Ücretsiz Oyun Filtresi Onay Kutusu
     show_free_only = st.sidebar.checkbox("Sadece Ücretsiz Oyunları Göster")
     
-    # Filtreleme Mantığı
     filtered_df = df[df['price_usd'] <= selected_price]
-    
     if show_free_only:
         filtered_df = filtered_df[filtered_df['is_free'] == True]
 
@@ -77,20 +73,53 @@ try:
     st.subheader("📋 Filtrelenmiş Oyun Listesi")
     st.dataframe(filtered_df[['name', 'price_usd', 'discount_pct', 'is_free', 'release_date']], use_container_width=True)
 
-    # 5. Oyun Arama ve Öneri Bölümü
+    # 5. Oyun Arama Bölümü
     st.markdown("---")
     st.subheader("🎯 Oyun Arama & İndirim Yakalayıcı")
-    
     search_query = st.text_input("Merak ettiğiniz bir oyunun adını yazın:", "")
-    
     if search_query:
         results = df[df['name'].str.contains(search_query, case=False, na=False)]
-        
         if not results.empty:
             st.write(f"**'{search_query}'** araması için {len(results)} sonuç bulundu:")
             st.dataframe(results[['name', 'price_usd', 'discount_pct', 'release_date']], use_container_width=True)
         else:
             st.warning("Aradığınız kriterlere uygun oyun bulunamadı.")
+
+    # 6. YENİ ÖZELLİK: Makine Öğrenmesi ile Başarı Tahmini
+    st.markdown("---")
+    st.subheader("🤖 Yapay Zeka ile Oyun Başarısı / Oyuncu Etkileşimi Tahmini")
+    st.write("Yayınlamayı planladığınız oyunun parametrelerini girerek tahmini inceleme/oyuncu etkileşim sayısını öngörün.")
+
+    # Model Eğitimi (Arka Plan)
+    # Bağımsız değişkenler (Features) ve Bağımlı değişken (Target)
+    X = df[['price_usd', 'discount_pct', 'is_free']].copy()
+    
+    # Hedef sütun olarak 'reviews_count' veya 'review_count' varsa onu kullanıyoruz, yoksa simüle ediyoruz
+    target_col = 'reviews_count' if 'reviews_count' in df.columns else ('review_count' if 'review_count' in df.columns else None)
+    
+    if target_col:
+        y = df[target_col]
+        
+        model = RandomForestRegressor(n_estimators=100, random_state=42)
+        model.fit(X, y)
+
+        # Kullanıcı Girdileri
+        p_col1, p_col2, p_col3 = st.columns(3)
+        input_price = p_col1.number_input("Planlanan Fiyat ($):", min_value=0.0, max_value=200.0, value=19.99)
+        input_discount = p_col2.slider("Planlanan İndirim Oranı (%):", 0, 90, 0)
+        input_is_free = p_col3.selectbox("Oyun Ücretsiz mi olmalı?", [False, True])
+
+        if st.button("🔮 Oyuncu Etkileşimini Tahmin Et"):
+            # Model ile tahmin yapma
+            input_data = pd.DataFrame({
+                'price_usd': [input_price],
+                'discount_pct': [input_discount],
+                'is_free': [input_is_free]
+            })
+            prediction = model.predict(input_data)[0]
+            
+            st.success(f"🎉 Tahmini Oyuncu İnceleme/Etkileşim Sayısı: **{int(prediction):,}**")
+            st.info("💡 Not: Bu tahmin, Random Forest algoritması kullanılarak geçmiş Steam verileri üzerindeki eğilimlere göre hesaplanmıştır.")
 
 except Exception as e:
     st.error(f"Hata oluştu: {e}")
